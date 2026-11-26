@@ -6,7 +6,7 @@ Actúa como ingeniero de sistemas embebidos y desarrollador Android con experien
 
 ## CONTEXTO
 
-El proyecto es un **dispensador inteligente de alimento para mascotas**. La app Android controla el dispensador, muestra las lecturas de los sensores, solicita fotografías y consulta el historial del usuario. Este es el repositorio definitivo:
+El proyecto es un **dispensador inteligente de alimento para mascotas**. La app Android controla el dispensador, muestra las lecturas de los sensores, recibe fotografías por presencia y consulta el historial del usuario. Este es el repositorio definitivo:
 
 [Proyecto-DISPENSADOR-DEFINITIVO-IOT](https://github.com/bryanramosing-ux/Proyecto-DISPENSADOR-DEFINITIVO-IOT)
 
@@ -18,7 +18,7 @@ El proyecto es un **dispensador inteligente de alimento para mascotas**. La app 
 
 ## OBJETIVO
 
-Deja el proyecto listo para demostrar este recorrido con el teléfono del equipo: **iniciar sesión → conectar con EMQX → recibir lecturas reales → solicitar una porción → ver el resultado del controlador → consultar el historial en Firestore → solicitar y visualizar una foto**. Comprueba también la recuperación al apagar y volver a encender la zona Wi-Fi, sin repetir una dispensación.
+Deja el proyecto listo para demostrar este recorrido con el teléfono del equipo: **iniciar sesión → conectar con EMQX → recibir lecturas reales → pulsar Dispensar y Detener → ver el resultado del controlador → consultar el historial en Firestore → detectar una visita y visualizar su foto**. Comprueba también la recuperación al apagar y volver a encender la zona Wi-Fi, sin repetir una dispensación.
 
 ## TAREA
 
@@ -28,7 +28,7 @@ Deja el proyecto listo para demostrar este recorrido con el teléfono del equipo
 
 3. **Completa el ESP32 controlador.** Verifica que cada HC-SR04 corresponda a su función —plato o tolva— y que una lectura inválida se muestre como tal. Contrasta los GPIO con el manual. Revisa la validación de porciones, el nivel mínimo, la vigencia del `nonce`, la cuota persistente y la protección frente a órdenes repetidas o antiguas. Comprueba qué ocurre si la placa ejecuta la orden y la app pierde el `ack`. La interfaz debe poder mostrar un resultado sin confirmar y evitar que un reintento automático entregue otra porción.
 
-4. **Completa el ESP32-CAM.** Verifica el modelo de placa, el sensor y el mapa de pines antes de cargar. Sigue el flujo real del repositorio: la app publica en `photo`, el controlador reenvía a `camera/request` y la cámara responde con un JPEG binario en `jpeg`. Comprueba que Android decodifique una foto completa y que la función en vivo termine su ráfaga. Revisa los límites de tamaño, los fallos de captura y el consumo de datos. La cámara debe funcionar mediante el broker sin abrir puertos en el teléfono.
+4. **Completa el ESP32-CAM.** Verifica el modelo de placa, el sensor y el mapa de pines antes de cargar. Sigue el flujo real del repositorio: el controlador detecta presencia y publica en `camera/request` y la cámara responde con un JPEG binario en `jpeg`. Comprueba que Android decodifique una foto completa y que una visita continua genere una sola solicitud. Revisa los límites de tamaño, los fallos de captura y el consumo de datos. La cámara debe funcionar mediante el broker sin abrir puertos en el teléfono.
 
 5. **Termina la integración con EMQX y Firebase.** Verifica los tópicos bajo `dispensador/equipo01/` o el prefijo equivalente si la configuración activa usa otro equipo. Contrasta los permisos de publicación y suscripción de cada cliente con `docs/SOFTWARE.md`. En Firebase, verifica la correspondencia entre `applicationId`, el proyecto existente y `app/google-services.json`, el acceso por correo y contraseña, la base Firestore y las reglas desplegadas. Comprueba que cada usuario solo pueda acceder a su historial en `users/{uid}/feedings/{id}`. Revisa que la app asocie cada resultado con el ID de la orden y evite registros duplicados. Si tienes acceso autorizado a la consola o CLI, completa y verifica los ajustes pendientes. Si falta acceso, termina el código y especifica la acción exacta que debo realizar en mi cuenta.
 

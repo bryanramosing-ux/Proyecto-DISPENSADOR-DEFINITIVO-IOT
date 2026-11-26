@@ -41,8 +41,8 @@ class BrokerDevice(host: String, private val device: String, private val user: S
         runCatching {
             val j = JSONObject(String(message.payload, Charsets.UTF_8))
             when (topic) {
-                "$root/state" -> queue.trySend(Signal.Status(Reading(j.getInt("level"),j.getInt("cm"),j.getString("nonce"))))
-                "$root/ack" -> queue.trySend(Signal.Reply(j.getString("id"), if (j.getBoolean("ok")) "Ciclo completado" else "Rechazado"))
+                "$root/state" -> queue.trySend(Signal.Status(Reading(j.getInt("level"),j.getInt("cm"),j.getString("nonce"),j.getBoolean("active"),j.getBoolean("present"))))
+                "$root/ack" -> queue.trySend(Signal.Reply(j.getString("id"), if (j.getBoolean("ok")) "Detenido" else "Rechazado", j.getInt("cycles")))
                 else -> Unit
             }
         }
@@ -50,10 +50,10 @@ class BrokerDevice(host: String, private val device: String, private val user: S
     private suspend fun publish(path: String, body: String) = withContext(Dispatchers.IO) {
         client.publish("$root/$path", body.toByteArray(), 0, false).waitForCompletion(5000)
     }
-    override suspend fun feed(id: String, portions: Int, nonce: String) {
-        publish("cmd", JSONObject().put("id",id).put("portions",portions).put("nonce",nonce).toString())
+    override suspend fun startFeed(id: String, nonce: String) {
+        publish("cmd", JSONObject().put("id",id).put("action","start").put("nonce",nonce).toString())
     }
-    override suspend fun capture(live: Boolean) { publish("photo", if(live) "live" else "capture") }
+    override suspend fun stopFeed() { publish("cmd", JSONObject().put("action","stop").toString()) }
     override fun close() {
         queue.close()
         Thread {
@@ -72,17 +72,34 @@ class Simulator: Device {
     private var used = 0
     private var day = java.time.LocalDate.now()
     private var key = UUID.randomUUID().toString()
-    @Synchronized private fun emit() { queue.trySend(Signal.Status(Reading(level,24,key))) }
-    override suspend fun connect() { scope.launch { while (isActive) { emit(); delay(2000) } } }
-    @Synchronized private fun simulate(id: String, portions: Int, nonce: String) {
-        val now = android.os.SystemClock.elapsedRealtime()
-        if (day != java.time.LocalDate.now()) { day = java.time.LocalDate.now(); used = 0 }
-        val ok = key == nonce && portions in 1..3 && level >= portions*4 && (last == 0L || now-last >= 10000) && used+portions <= 12
-        if (ok) { used += portions; level -= portions*4; last = now; key = UUID.randomUUID().toString() }
-        queue.trySend(Signal.Reply(id, if (ok) "Ciclo completado" else "Rechazado"))
+    private var activeId: String? = null
+    private var cycles = 0
+    private var due = 0L
+    private fun emit() { queue.trySend(Signal.Status(Reading(level,24,key,activeId!=null,true))) }
+    override suspend fun connect() { scope.launch { while (isActive) { tick(); delay(350) } } }
+    private fun finish() {
+        activeId?.let { queue.trySend(Signal.Reply(it,"Detenido",cycles)) }
+        activeId=null
+        last=android.os.SystemClock.elapsedRealtime()
         emit()
     }
-    override suspend fun feed(id: String, portions: Int, nonce: String) = simulate(id,portions,nonce)
-    override suspend fun capture(live: Boolean) { queue.trySend(Signal.Link("Simulación · no hay una cámara física")) }
+    private fun cycle(now: Long) { cycles++; used++; level-=4; due=now+3000 }
+    @Synchronized private fun tick() {
+        val now=android.os.SystemClock.elapsedRealtime()
+        if(day!=java.time.LocalDate.now()){ day=java.time.LocalDate.now(); used=0 }
+        if(activeId!=null && now>=due){
+            if(cycles>=3 || used>=12 || level<4) finish() else cycle(now)
+        }
+        emit()
+    }
+    @Synchronized private fun begin(id: String, nonce: String) {
+        val now=android.os.SystemClock.elapsedRealtime()
+        if(activeId!=null || nonce!=key || level<4 || used>=12 || (last!=0L && now-last<10000)){
+            queue.trySend(Signal.Reply(id,"Rechazado",0)); return
+        }
+        activeId=id; cycles=0; key=UUID.randomUUID().toString(); cycle(now); emit()
+    }
+    override suspend fun startFeed(id: String, nonce: String) = begin(id,nonce)
+    override suspend fun stopFeed() { synchronized(this){ if(activeId!=null) finish() } }
     override fun close() { scope.cancel(); queue.close() }
 }

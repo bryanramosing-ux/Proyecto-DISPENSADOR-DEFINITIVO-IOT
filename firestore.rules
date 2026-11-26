@@ -6,12 +6,15 @@ service cloud.firestore {
    function valid() {
     let d = request.resource.data;
     return d.keys().hasOnly(['time','portions','result']) && d.time is int &&
-      d.portions is int && d.portions >= 1 && d.portions <= 3 &&
-      d.result in ['Pendiente','Ciclo completado','Rechazado','Sin confirmación'];
+      d.portions is int && d.portions >= 0 && d.portions <= 3 &&
+      d.result in ['Pendiente','Detenido','Ciclo completado','Rechazado','Sin confirmación'];
    }
    allow read: if owner();
    allow create: if owner() && valid();
-   allow update: if owner() && valid() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['result']);
+   allow update: if owner() && valid() && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['result']) ||
+     (resource.data.result == 'Pendiente' && resource.data.portions == 0 &&
+      request.resource.data.result != 'Pendiente' &&
+      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['result','portions'])));
   }
  }
 }

@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.*
 import androidx.compose.ui.unit.*
-import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 import kotlin.math.sin
@@ -76,9 +75,6 @@ class MainActivity: ComponentActivity() {
 }
 @Composable private fun Screen(s: Panel,m: PanelModel) {
     var tab by rememberSaveable { mutableStateOf("Tolva") }
-    var portions by rememberSaveable { mutableIntStateOf(1) }
-    var confirm by remember { mutableStateOf(false) }
-    var live by remember { mutableStateOf(false) }
     var host by rememberSaveable { mutableStateOf("") }
     var id by rememberSaveable { mutableStateOf("equipo01") }
     var user by rememberSaveable { mutableStateOf("") }
@@ -107,11 +103,15 @@ class MainActivity: ComponentActivity() {
                             Text(s.reading?.cm?.takeIf{it>=0}?.let{"Distancia frente al plato · $it cm"} ?: "Distancia frente al plato · sin lectura",color=Foam)
                         }
                         Glass {
-                            Text("Porciones por ciclo",color=Foam)
-                            Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){ (1..3).forEach {
-                                FilterChip(portions==it,{portions=it},{Text(it.toString())})
-                            } }
-                            Button({confirm=true},enabled=s.connected && !s.pending && (s.reading?.level ?: 0)>0){Text(if(s.pending) "Esperando confirmación…" else "Dispensar")}
+                            Text(when(s.reading?.present){
+                                true -> "Presencia frente al plato"
+                                false -> "Plato sin presencia detectada"
+                                null -> "Esperando sensor del plato"
+                            },color=Foam)
+                            val stopping=s.pending || s.reading?.active==true
+                            Button({m.toggleFeed()},enabled=stopping || (s.connected && (s.reading?.level ?: 0)>=4)){
+                                Text(if(stopping) "Detener" else "Dispensar")
+                            }
                         }
                     }
                     "Cámara" -> Glass {
@@ -127,18 +127,15 @@ class MainActivity: ComponentActivity() {
                             }.getOrElse { "Error al guardar la fotografía" }
                             export=null
                         }
-                        if(bitmap!=null) Image(bitmap,"Último fotograma",Modifier.fillMaxWidth().height(220.dp))
-                        else Text(if(s.mode=="Simulación") "La cámara estará disponible al conectar un equipo real." else "Solicita una imagen a la ESP32-CAM.",color=Foam)
-                        Button({m.photo()},enabled=s.connected && s.mode!="Simulación"){Text("Tomar fotografía")}
+                        if(bitmap!=null) Image(bitmap,"Última foto del plato",Modifier.fillMaxWidth().height(220.dp))
+                        else Text(if(s.mode=="Simulación") "La cámara estará disponible al conectar un equipo real." else "Esperando la foto de una visita al plato.",color=Foam)
                         if(bitmap!=null) TextButton({export=s.jpeg;save.launch("Marea-"+System.currentTimeMillis()+".jpg")}){Text("Guardar fotografía")}
                         if(exportStatus.isNotEmpty()) Text(exportStatus,color=Foam)
-                        Row(verticalAlignment=Alignment.CenterVertically){Switch(live,{live=it},enabled=s.connected && s.mode!="Simulación"); Text("   Vista en directo",color=Foam)}
-                        LaunchedEffect(live,s.connected){ while(live && s.connected){ m.photo(true);delay(3000) } }
                     }
                     "Historial" -> Glass {
                         if(s.entries.isEmpty()) Text("Los pedidos aparecerán aquí.",color=Foam)
                         s.entries.forEach { Text(DateFormat.getDateTimeInstance().format(Date(it.time)),color=Mint,fontSize=12.sp)
-                            Text("${it.portions} porción(es) · ${it.result}",color=Foam); HorizontalDivider() }
+                            Text("${it.result} · ${it.portions} ciclo(s) confirmado(s)",color=Foam); HorizontalDivider() }
                     }
                     "Ajustes" -> Glass {
                         if(s.mode=="Equipo real"){
@@ -160,5 +157,4 @@ class MainActivity: ComponentActivity() {
             }
         }
     }
-    if(confirm) AlertDialog(onDismissRequest={confirm=false},title={Text("Confirmar dispensación")},text={Text("Activar $portions porción(es) en ${s.mode.lowercase()}?")},confirmButton={TextButton({confirm=false;m.feed(portions)}){Text("Dispensar")}},dismissButton={TextButton({confirm=false}){Text("Cancelar")}})
 }

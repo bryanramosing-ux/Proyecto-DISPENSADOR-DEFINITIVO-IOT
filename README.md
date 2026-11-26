@@ -2,6 +2,8 @@
 
 Proyecto para Android Studio Panda 1. Abre esta carpeta, donde están settings.gradle.kts y gradlew. El teléfono controla el dispensador a través de EMQX y guarda el historial por usuario en Firebase. La simulación sigue disponible para probar la interfaz.
 
+El sensor frontal detecta la llegada al plato y dispara una foto. En la pantalla Tolva, pulsa **Dispensar** para iniciar y **Detener** para cerrar. El segundo sensor mide el nivel de alimento.
+
 1. [Configurar Android, Firebase, EMQX y MQTTX](docs/SOFTWARE.md).
 2. [Programar las dos placas, cablear componente por componente y verificar el montaje](docs/HARDWARE.md).
 3. [Firmware del controlador](firmware/Control/Control.ino) y [firmware de la cámara](firmware/Camara/Camara.ino).

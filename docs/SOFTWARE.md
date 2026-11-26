@@ -13,8 +13,8 @@ Usa el despliegue existente dispensador-instituto. En Deployment Overview copia 
 
 | Cliente | Publica | Recibe |
 |---|---|---|
-| App Android | cmd, photo | state, ack, jpeg |
-| ESP32 principal | state, ack, camera/request | cmd, photo |
+| App Android | cmd | state, ack, jpeg |
+| ESP32 principal | state, ack, camera/request | cmd |
 | ESP32-CAM | jpeg | camera/request |
 | MQTTX para observar | — | state, ack; jpeg si se concede |
 
@@ -23,5 +23,10 @@ Anteponer dispensador/equipo01/ a cada sufijo de la tabla. En Access Control →
 1. Activa los datos móviles y la zona Wi-Fi del celular en 2,4 GHz y WPA2 Personal. Anota el SSID exacto y la clave de esa red. El firmware necesita acceso a DNS, NTP y al broker por internet.
 2. En MQTTX crea o abre la conexión TLS con Address, puerto 8883, usuario observador y validación del certificado activa. Usa un Client ID exclusivo. Suscríbete a dispensador/equipo01/state y dispensador/equipo01/ack con QoS 0.
 3. En Ajustes de Android introduce Address sin protocolo ni puerto, equipo01 y la cuenta MQTT de la app. Pulsa Conectar equipo. Enciende el controlador y comprueba la aparición de lecturas nuevas.
-4. La cámara entrega JPEG por MQTT. La opción en vivo solicita una ráfaga de imágenes. El celular puede recibirlas a través del broker sin abrir puertos en la zona Wi-Fi.
-5. Tras el ensayo físico revisa en Firestore users/{uid}/feedings/{id}. Contrasta la hora, porciones y resultado con el movimiento observado. Un ACK confirma la decisión del controlador; la masa de alimento se comprueba con una balanza.
+4. Abre Cámara y acerca un blanco al sensor del plato. Al detectar una entrada, el ESP32 solicita una foto por camera/request y la cámara entrega un JPEG. La app conectada muestra la última imagen y permite guardarla. El broker transmite las fotos durante la sesión; las fotos de visitas anteriores no se descargan al reconectar.
+5. En Tolva pulsa Dispensar. El botón pasa a Detener. Púlsalo mientras el equipo dispensa y observa que el servo cierra y no inicia otro ciclo. Verifica el mismo ID en ack y el resultado en el historial. El botón funciona con o sin presencia en el plato.
+6. Para actualizar un montaje existente instala la app nueva y graba ambos sketches. En Firestore Database → Rules publica las reglas actualizadas de firestore.rules en el proyecto del dispensador. Admiten Detenido y cero ciclos para pedidos rechazados o sin confirmación, y conservan la lectura del historial antiguo. Las credenciales, los pines y el puerto del broker siguen vigentes.
+
+### Protocolo manual
+
+Todos los tópicos llevan el prefijo dispensador/equipo01/. En cmd la app envía action=start, id y el nonce reciente; el segundo toque envía action=stop. Publica comandos sin retención. state incluye active y present. Al finalizar, ack incluye el id de inicio, ok y cycles (aperturas iniciadas, incluida una apertura interrumpida). El controlador conserva la cuota diaria al reiniciar. Si el teléfono pierde conexión, el límite autónomo de tres aperturas por activación sigue vigente. Un pedido sin ACK se registra como Sin confirmación; no se reenvía automáticamente.

@@ -56,7 +56,7 @@ class PanelModel(app: Application): AndroidViewModel(app) {
                     is Signal.Status -> { seen=SystemClock.elapsedRealtime(); change { it.copy(reading=event.reading,connected=true) } }
                     is Signal.Photo -> change { it.copy(jpeg=event.jpeg,message="Fotografía recibida") }
                     is Signal.Link -> { if(event.message.startsWith("Broker")) change { it.copy(connected=false,reading=null) }; note(event.message) }
-                    is Signal.Reply -> pending?.takeIf { it.id==event.id }?.let { finish(it,event.result) }
+                    is Signal.Reply -> pending?.takeIf { it.id==event.id }?.let { finish(it.copy(portions=event.cycles),event.result) }
                 }
             } }
             try {
@@ -71,33 +71,45 @@ class PanelModel(app: Application): AndroidViewModel(app) {
             catch(e: Exception){ change { it.copy(busy=false,message=e.localizedMessage ?: "Falló MQTT") }; next.close() }
         }
     }
-    fun feed(n: Int) {
-        val current = state.value
-        val nonce = current.reading?.nonce ?: return
-        if (!current.connected || current.pending || n !in 1..3 || current.reading.level <= 0) return
-        val entry = Entry(UUID.randomUUID().toString(),System.currentTimeMillis(),n,"Pendiente")
+    fun toggleFeed() {
+        val target=device ?: return
+        val current=state.value
+        if(current.pending || current.reading?.active==true){
+            session.launch {
+                try { target.stopFeed(); note("Parada enviada · esperando estado") }
+                catch(e: Exception){ note("Parada sin confirmar · revisa la conexión") }
+            }
+            return
+        }
+        val reading=current.reading ?: return
+        if(!current.connected || reading.level<4) return
+        val entry=Entry(UUID.randomUUID().toString(),System.currentTimeMillis(),0,"Pendiente")
         pending=entry
-        change { it.copy(pending=true,message="Registrando pedido…") }
+        change { it.copy(pending=true,message="Inicio solicitado") }
+        val store=journal ?: return
         session.launch {
-            try {
-                withTimeout(8000) { journal!!.save(entry) }
-                device!!.feed(entry.id,n,nonce)
-                delay(9000)
-            } catch(e: TimeoutCancellationException) { /* El registro o ACK puede llegar después. */ }
+            try { store.save(entry) }
             catch(e: CancellationException){ throw e }
-            catch(e: Exception){ note(e.localizedMessage ?: "Falló el pedido") }
-            if(pending?.id == entry.id) finish(entry,"Sin confirmación")
+            catch(e: Exception){ note("Revisa los permisos del historial") }
+        }
+        session.launch {
+            try { target.startFeed(entry.id,reading.nonce) }
+            catch(e: CancellationException){ throw e }
+            catch(e: Exception){ note("Envío sin confirmar") }
+            delay(12000)
+            if(pending?.id==entry.id) finish(entry,"Sin confirmación")
         }
     }
-    private suspend fun finish(entry: Entry, result: String) {
+    private fun finish(entry: Entry, result: String) {
         pending=null
         change { it.copy(pending=false,message=result) }
-        try { withTimeout(7000){ journal!!.save(entry.copy(result=result)) } }
-        catch(e: TimeoutCancellationException){ note("$result · historial pendiente de sincronizar") }
-        catch(e: CancellationException){ throw e }
-        catch(e: Exception){ note("$result · revisa los permisos del historial") }
+        val store=journal ?: return
+        session.launch {
+            try { store.save(entry.copy(result=result)) }
+            catch(e: CancellationException){ throw e }
+            catch(e: Exception){ note("$result · revisa el historial") }
+        }
     }
-    fun photo(live: Boolean=false) { session.launch { try { device?.capture(live) } catch(e: Exception){ note("No se pudo pedir la foto") } } }
     private fun reset() { session.cancel(); device?.close(); device=null; pending=null; session=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate) }
     fun exit() { reset(); accounts.exit(); state.value=Panel() }
     override fun onCleared() { session.cancel(); device?.close() }

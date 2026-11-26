@@ -4,12 +4,8 @@
 
 // Mapa AI Thinker ESP32-CAM con OV2640. Verificar antes de cargar.
 bool cameraReady=false, requested=false;
-unsigned long liveSince=0, lastFrame=0;
-bool live=false;
 void command(char *name, uint8_t *payload, unsigned int len) {
-  if(topic("camera/request")!=name) return;
-  requested=true;
-  if(len==4 && memcmp(payload,"live",4)==0){ live=true; liveSince=millis(); }
+  if(topic("camera/request")==name && len==7 && memcmp(payload,"capture",7)==0) requested=true;
 }
 bool initCamera(){
   camera_config_t c={};
@@ -30,11 +26,14 @@ void setup(){
 }
 void loop(){
   if(maintain("camera")) mqtt.subscribe(topic("camera/request").c_str());
-  if(live && millis()-liveSince>4500) live=false;
-  if((requested || (live && millis()-lastFrame>=550)) && mqtt.connected()){
-    lastFrame=millis();
+  if(requested && mqtt.connected()){
     requested=false;
-    camera_fb_t *frame=cameraReady?esp_camera_fb_get():nullptr;
+    if(!cameraReady) return;
+    // El único búfer puede contener una imagen anterior a esta visita.
+    camera_fb_t *previous=esp_camera_fb_get();
+    if(!previous) return;
+    esp_camera_fb_return(previous);
+    camera_fb_t *frame=esp_camera_fb_get();
     if(frame){
       if(frame->len<=60000 && mqtt.beginPublish(topic("jpeg").c_str(),frame->len,false)){
         size_t offset=0;

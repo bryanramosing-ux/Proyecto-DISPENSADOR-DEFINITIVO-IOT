@@ -14,7 +14,7 @@ Usa las etiquetas impresas en **tu placa**. Los números siguientes proceden de 
 1. En Arduino IDE instala el paquete esp32 de Espressif Systems **3.3.7** (la versión con la que compilaste), PubSubClient 2.8, ArduinoJson 7.x y ESP32Servo compatible con el core 3.x. El índice estable es https://espressif.github.io/arduino-esp32/package_esp32_index.json.
 2. Dentro de firmware/Control copia secrets.example.h a secrets.h. Escribe el nombre exacto y la clave de tu zona Wi-Fi, BROKER_HOST del despliegue, la cuenta MQTT del controlador y DEVICE_ID equipo01. En ROOT_CA pega el PEM del despliegue completo, incluyendo BEGIN y END CERTIFICATE. Conserva los delimitadores C++ exteriores.
 3. Conecta únicamente el controlador al computador por micro-USB. Abre Control.ino y selecciona ESP32 Dev Module y el puerto que aparece al conectar la placa. Pulsa Verify y después Upload. Verify por sí solo compila.
-4. Enciende la zona Wi-Fi con datos móviles. En MQTTX busca un mensaje **nuevo** en dispensador/equipo01/state. El firmware envía cada dos segundos aproximadamente; con sensores desconectados no valides las lecturas. Desconecta el USB antes de cablear.
+4. Enciende la zona Wi-Fi con datos móviles. En MQTTX busca un mensaje **nuevo** en dispensador/equipo01/state. El firmware envía cada medio segundo aproximadamente; con sensores desconectados no valides las lecturas. Desconecta el USB antes de cablear.
 
 ## 3. Grabar y probar la ESP32-CAM por separado
 
@@ -22,7 +22,7 @@ Usa las etiquetas impresas en **tu placa**. Los números siguientes proceden de 
 2. Copia firmware/Camara/secrets.example.h a secrets.h en esa misma carpeta. Usa el mismo Wi-Fi, host, certificado y equipo01. Introduce la **cuenta MQTT de la cámara**. Los sketches crean automáticamente IDs de cliente distintos.
 3. Con la base USB compatible desconectada, asienta la cámara haciendo coincidir etiquetas y orientación. Conecta el USB de datos a la base como única alimentación. Abre Camara.ino, selecciona AI Thinker ESP32-CAM y el puerto de la base; verifica y sube. Reinicia en modo normal y abre el monitor serie a 115200. Busca **Camara lista**. Si aparece **Error al iniciar OV2640**, revisa modelo, asiento y orientación del flex antes de continuar.
 4. Si solo dispones de USB-UART, usa señales TTL de **3,3 V** y alimentación regulada de 5 V con capacidad para la cámara. Con todo apagado conecta TX del adaptador → U0R; RX → U0T; GND → GND común. El positivo de la fuente va al pin **5V** de la cámara. Deja el positivo del adaptador libre. Une IO0 a GND y reinicia para cargar; después de Upload apaga, quita el puente IO0–GND y reinicia para ejecutar. Verifica el nivel lógico del adaptador antes de usarlo.
-5. En operación la cámara solo necesita **5V y GND** externos. Usa el pin rotulado 5V y un GND claramente identificado. Deja libres VCC, 3V3, GND/R, U0R, U0T e IO0. El controlador reenvía las peticiones por MQTT y la cámara publica JPEG. No hay cable TX/RX entre las placas ni una URL de vídeo que debas abrir.
+5. En operación la cámara solo necesita **5V y GND** externos. Usa el pin rotulado 5V y un GND claramente identificado. Deja libres VCC, 3V3, GND/R, U0R, U0T e IO0. El controlador solicita una fotografía al detectar presencia por MQTT y la cámara publica JPEG. No hay cable TX/RX entre las placas ni una URL de vídeo que debas abrir.
 
 ## 4. Distribuir los 5 V y el retorno
 
@@ -57,7 +57,7 @@ En la parte posterior del sensor de la foto se distinguen **Vcc, Trig, Echo y Gn
 
 1. Verifica la identificación de los hilos en la unidad real. Apaga todo. Conecta primero retorno y alimentación al distribuidor y después señal a D5. Evita que la corriente del motor pase por el ESP32, el USB o los contactos de la protoboard. D5 transporta únicamente la señal de posición.
 2. Deja el brazo desmontado al primer encendido. El controlador solicita **85° al arrancar**. Espera el posicionamiento, corta alimentación y monta el brazo con el disco en cerrado, sin forzar el eje.
-3. Con mecanismo descargado, comprueba que hay recorrido libre hasta la posición abierta programada (**105°**). Aparta manos y cables. Enciende y envía una sola porción desde la app cuando haya nivel válido y telemetría reciente. El programa ordena abrir durante 350 ms y regresar a cerrado. Si golpea un tope, zumba continuamente o reinicia el controlador, corta alimentación y corrige la mecánica o la distribución antes de repetir.
+3. Con mecanismo descargado, comprueba que hay recorrido libre hasta la posición abierta programada (**105°**). Aparta manos y cables. Enciende y pulsa Dispensar y luego Detener antes de la siguiente apertura cuando haya nivel válido y telemetría reciente. El programa ordena abrir durante 350 ms y regresar a cerrado. Si golpea un tope, zumba continuamente o reinicia el controlador, corta alimentación y corrige la mecánica o la distribución antes de repetir.
 4. Con alimento, recoge y pesa varias porciones. Ajusta posición y tiempo según el mecanismo. El ACK confirma la orden ejecutada por el firmware; el dispensador carece de célula de carga para certificar gramos.
 
 ## 7. Comprobar el conjunto
@@ -66,12 +66,12 @@ En la parte posterior del sensor de la foto se distinguen **Vcc, Trig, Echo y Gn
 |---|---|
 | Alimentación | Medición de la rama de 5 V en las cargas, también mientras arranca el servo; ambas placas siguen conectadas. |
 | Plato y tolva | cm cambia al mover el blanco del plato y level al cambiar el nivel de la tolva. El sensor del plato informa distancia; la política actual evalúa el nivel de la tolva. |
-| Foto | Con ambas placas online, la app envía photo; el controlador publica camera/request; la cámara devuelve jpeg y aparece una imagen nueva. |
-| Porción | Una petición desde la app, un solo movimiento completo, ACK con el mismo id y registro en el historial del usuario en Firestore. |
+| Foto | Orienta la cámara hacia el plato. Acerca un blanco a 25 cm o menos durante dos lecturas. Debe llegar una foto a Android y el servo debe seguir cerrado. Mantén el blanco: no se solicita otra foto. Retíralo más allá de 35 cm durante tres lecturas y vuelve a acercarlo para provocar otra captura. |
+| Porción | Pulsa Dispensar y luego Detener. Comprueba cierre y ausencia de aperturas posteriores. Repite y deja actuar el límite automático. Contrasta las aperturas iniciadas con ack e historial. |
 | Rechazo | Con la tolva vacía confirmada por el sensor, el pedido debe rechazarse sin mover el servo. |
 | Reinicio | Tras apagar y encender con USB desconectado, ambas placas vuelven al Wi-Fi y llega un state nuevo. |
 
-La política del controlador admite 1–3 porciones por orden, exige un nivel mínimo de 4 puntos porcentuales por porción, espera de 10 s y máximo diario de 12 porciones. Son valores del prototipo. El montaje queda validado al registrar mediciones, movimiento y foto en el equipo físico.
+La política del controlador inicia aperturas cada 3 s hasta recibir Detener, con un máximo de tres aperturas por activación. Exige al menos 4 % de nivel antes de cada apertura, espera de 10 s y máximo diario de 12 porciones. Son valores del prototipo. El montaje queda validado al registrar mediciones, movimiento y foto en el equipo físico.
 
 ### Referencias técnicas
 
